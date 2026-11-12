@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mode Wheel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: the wheel is the page. A narrow panel beside it holds the mode legend, view toggles and a readout. */
+:root {
+  --bg: #d9d9d6;
+  --surface: #ffffff;
+  --ink: #17181a;
+  --muted: #5d6066;
+  --line: #bdbdb9;
+  --shape: #0b0b0c;
+  --q-major: #F3B33D;
+  --q-minor: #6FA9E0;
+  --q-dim: #E36A5F;
+  --font-display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-body: "Figtree", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1d1e20;
+    --surface: #2a2b2e;
+    --ink: #f1f1ee;
+    --muted: #a6a8ad;
+    --line: #45474c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1d1e20;
+  --surface: #2a2b2e;
+  --ink: #f1f1ee;
+  --muted: #a6a8ad;
+  --line: #45474c;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.4;
+}
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 32px;
+  align-items: start;
+}
+@media (max-width: 820px) {
+  main { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+}
+
+.wheel-col { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+#wheel { width: 100%; max-width: 640px; height: auto; display: block; user-select: none; -webkit-user-select: none; }
+#segs { transition: opacity 0.2s ease; }
+#wheel.show-chords #segs { opacity: 0.32; }
+#fills { display: none; }
+#wheel.show-chords #fills { display: block; }
+.q-major { fill: var(--q-major); }
+.q-minor { fill: var(--q-minor); }
+.q-dim { fill: var(--q-dim); }
+
+.note {
+  font-family: var(--font-display);
+  fill: #17181a;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+.note tspan { dominant-baseline: central; }
+.note.maj { font-size: 36px; }
+.note.maj.two { font-size: 27px; }
+.note.maj.has-sub { font-size: 31px; }
+.note.maj.code { font-size: 30px; }
+.note.maj.code.has-sub { font-size: 27px; }
+.note.min { font-size: 20px; }
+.note.min.two { font-size: 15px; }
+.note.min.has-sub { font-size: 18px; }
+.note.min.code { font-size: 19px; }
+.note.min.code.has-sub { font-size: 17px; }
+.note .sub { font-family: var(--font-body); font-weight: 700; }
+.note.maj .sub { font-size: 14px; }
+.note.min .sub { font-size: 11.5px; }
+
+.hub { fill: var(--surface); }
+.hub-root { font-family: var(--font-display); font-weight: 600; font-size: 50px; fill: var(--ink); text-anchor: middle; pointer-events: none; }
+.hub-mode { font-family: var(--font-body); font-weight: 600; font-size: 19px; fill: var(--muted); text-anchor: middle; pointer-events: none; letter-spacing: 0.02em; }
+
+.rot { transform-origin: 300px 300px; }
+.rot.snap { transition: transform 0.28s cubic-bezier(.3,1.3,.5,1); }
+#shape {
+  fill: rgba(0,0,0,0);
+  stroke: var(--shape);
+  stroke-width: 10;
+  stroke-linejoin: round;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: all;
+  outline: none;
+}
+#shape.dragging { cursor: grabbing; }
+#shape:focus-visible { stroke: #1a56d6; }
+#rootMark {
+  fill: none;
+  stroke: var(--shape);
+  stroke-width: 4.5;
+  pointer-events: none;
+  transition: transform 0.3s ease, r 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rot.snap, #rootMark, #segs { transition: none; }
+}
+
+.steps { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.hint { color: var(--muted); font-size: 14px; margin: 0; text-align: center; }
+.rings { font-size: 14px; margin: 0; text-align: center; }
+.rings b { font-weight: 600; }
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--ink); }
+button:focus-visible { outline: 2px solid #1a56d6; outline-offset: 2px; }
+
+.panel { display: flex; flex-direction: column; gap: 22px; }
+h2 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.modes { display: flex; flex-direction: column; gap: 2px; }
+.mode-btn {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 7px 10px;
+  border-color: transparent;
+  background: transparent;
+}
+.mode-btn .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ink); }
+.mode-btn .nm { font-weight: 500; }
+.mode-btn[hidden] { display: none; }
+.mode-btn .alias { color: var(--muted); font-size: 13px; }
+.mode-btn[aria-pressed="true"] { background: var(--surface); border-color: var(--ink); }
+.mode-btn[aria-pressed="true"] .nm { font-weight: 700; }
+.mode-btn[aria-pressed="true"] .dot { border-width: 5px; }
+
+.toggles { display: flex; flex-direction: column; gap: 2px; }
+.toggle {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 7px 10px;
+  border-color: transparent;
+  background: transparent;
+}
+.toggle .track {
+  width: 34px; height: 20px; border-radius: 10px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.15s ease;
+}
+.toggle .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--surface);
+  transition: transform 0.15s ease;
+}
+.toggle[aria-pressed="true"] .track { background: var(--ink); }
+.toggle[aria-pressed="true"] .track::after { transform: translateX(14px); }
+.toggle[aria-pressed="true"] { font-weight: 600; }
+.key { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; padding: 6px 10px 0; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+.now { font-family: var(--font-display); font-weight: 600; font-size: 32px; line-height: 1.1; margin: 0; }
+.parent { color: var(--muted); margin: 4px 0 0; font-size: 15px; }
+#enh { margin-top: 10px; font-size: 14px; }
+.chips { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.chip {
+  border-radius: 6px;
+  padding: 6px 0 7px;
+  text-align: center;
+  color: #17181a;
+  min-width: 0;
+}
+.chip small { display: block; font-size: 11px; font-weight: 600; opacity: 0.7; }
+.chip b { display: block; font-family: var(--font-display); font-weight: 600; font-size: 16px; white-space: nowrap; }
+.chip.root { box-shadow: inset 0 0 0 2.5px #0b0b0c; }
+</style>
+</head>
+<body>
+<main>
+  <div class="wheel-col">
+    <svg id="wheel" viewBox="0 0 600 600" role="img" aria-label="Circle of fifths with a rotating mode shape">
+      <circle cx="300" cy="300" r="272" fill="#ffffff"/>
+      <g id="segs"></g>
+      <g id="fills" class="rot snap"></g>
+      <g id="labels"></g>
+      <circle class="hub" cx="300" cy="300" r="105"/>
+      <text class="hub-root" id="hubRoot" x="300" y="302"></text>
+      <text class="hub-mode" id="hubMode" x="300" y="334"></text>
+      <g id="rotor" class="rot snap">
+        <path id="shape" tabindex="0" role="slider" aria-label="Key position" aria-valuemin="0" aria-valuemax="11"/>
+        <circle id="rootMark" cx="0" cy="0" r="31"/>
+      </g>
+    </svg>
+    <p class="rings" id="rings"></p>
+    <div class="steps">
+      <button type="button" id="ccw">&#8634; Down a fifth</button>
+      <button type="button" id="cw">Up a fifth &#8635;</button>
+    </div>
+    <p class="hint">Drag the black shape around the wheel, or use the arrow keys.</p>
+  </div>
+
+  <div class="panel">
+    <section>
+      <p class="now" id="now"></p>
+      <p class="parent" id="parent"></p>
+      <button type="button" id="enh" hidden></button>
+    </section>
+    <section>
+      <h2>Mode</h2>
+      <div class="modes" id="modes"></div>
+      <div class="toggles" style="margin-top:6px">
+        <button type="button" class="toggle" id="tModes" aria-pressed="false"><span class="track"></span><span>Show all modes</span></button>
+      </div>
+    </section>
+    <section>
+      <h2>Show on the wheel</h2>
+      <div class="toggles">
+        <button type="button" class="toggle" id="tChords" aria-pressed="false"><span class="track"></span><span>Chord types</span></button>
+        <button type="button" class="toggle" id="tRoman" aria-pressed="false"><span class="track"></span><span>Roman numerals</span></button>
+        <button type="button" class="toggle" id="tCamelot" aria-pressed="false"><span class="track"></span><span>Camelot wheel</span></button>
+      </div>
+      <div class="key" id="qkey" hidden>
+        <span><i style="background:var(--q-major)"></i>Major</span>
+        <span><i style="background:var(--q-minor)"></i>Minor</span>
+        <span><i style="background:var(--q-dim)"></i>Diminished</span>
+      </div>
+    </section>
+    <section>
+      <h2>Scale</h2>
+      <div class="chips" id="scale"></div>
+    </section>
+    <section>
+      <h2>Chords</h2>
+      <div class="chips" id="chords"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  var CX = 300, CY = 300, RO = 272, RM = 190, RI = 105;
+  var R_MAJ = 231, R_MIN = 148;
+  var COLORS = ['#F0A8A2','#F4B58E','#F8D09C','#FBF2A2','#D2E4A8','#A3D4A9','#90CFC4','#8CCFF0','#88AADB','#8785C0','#B290C3','#E7A2C9'];
+  var MAJ_LABELS = [['C'],['G'],['D'],['A'],['E'],['B','C♭'],['F♯','G♭'],['D♭','C♯'],['A♭'],['E♭'],['B♭'],['F']];
+  var MIN_LABELS = [['A'],['E'],['B'],['F♯'],['C♯'],['G♯','A♭'],['D♯','E♭'],['B♭','A♯'],['F'],['C'],['G'],['D']];
+  // deg: scale degree of the parent major key; ring/off: where the tonic sits inside the shape; m: fifths above the parent tonic
+  var MODES = [
+    { name: 'Ionian',     alias: 'major',         deg: 0, ring: 'maj', off: 0,  m: 0 },
+    { name: 'Dorian',     alias: '',              deg: 1, ring: 'min', off: -1, m: 2 },
+    { name: 'Phrygian',   alias: '',              deg: 2, ring: 'min', off: 1,  m: 4 },
+    { name: 'Lydian',     alias: '',              deg: 3, ring: 'maj', off: -1, m: -1 },
+    { name: 'Mixolydian', alias: '',              deg: 4, ring: 'maj', off: 1,  m: 1 },
+    { name: 'Aeolian',    alias: 'natural minor', deg: 5, ring: 'min', off: 0,  m: 3 },
+    { name: 'Locrian',    alias: '',              deg: 6, ring: 'min', off: 2,  m: 5 }
+  ];
+  var ION = [0, 2, 4, -1, 1, 3, 5];           // C D E F G A B as fifths from the tonic
+  var QUAL = ['', 'm', 'm', '', '', 'm', '°'];
+  var MAJ_ST = [0, 2, 4, 5, 7, 9, 11];
+  var ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+  var QCOLOR = { '': 'var(--q-major)', 'm': 'var(--q-minor)', '°': 'var(--q-dim)' };
+  var CAMELOT_BASE = -120;                    // puts 12 at the top, like a clock face
+
+  var rot = 0;        // degrees, cumulative
+  var mode = 0;       // index in MODES
+  var alt = false;    // alternate enharmonic spelling for B/C♭, F♯/G♭, D♭/C♯
+  var showChords = false, showRoman = false, camelot = false, allModes = false;
+  function modeLabel(i) { return allModes ? MODES[i].name : (i === 0 ? 'major' : 'minor'); }
+
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function polar(r, deg) {
+    var a = deg * Math.PI / 180;
+    return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+  }
+  function pt(r, deg) { var p = polar(r, deg); return p[0].toFixed(2) + ' ' + p[1].toFixed(2); }
+  function sector(r0, r1, a0, a1) {
+    return 'M' + pt(r1, a0) + 'A' + r1 + ' ' + r1 + ' 0 0 1 ' + pt(r1, a1) +
+           'L' + pt(r0, a1) + 'A' + r0 + ' ' + r0 + ' 0 0 0 ' + pt(r0, a0) + 'Z';
+  }
+  function mod(n, m) { return ((n % m) + m) % m; }
+  function noteName(f) {
+    var i = f + 1, acc = Math.floor(i / 7);
+    return 'FCGDAEB'[mod(i, 7)] + (acc > 0 ? '♯'.repeat(acc) : '♭'.repeat(-acc));
+  }
+  function semis(f) { return mod(7 * f, 12); }
+  function colorOf(f) { return COLORS[mod(f, 12)]; }
+  function camelotNum(k) { return mod(k + 7, 12) + 1; }   // wheel position -> Camelot number
+
+  // ---- static wheel ----
+  var svg = document.getElementById('wheel');
+  var segs = document.getElementById('segs');
+  var labels = document.getElementById('labels');
+  var majText = [], minText = [];
+  for (var k = 0; k < 12; k++) {
+    segs.appendChild(el('path', { d: sector(RM, RO, k * 30 - 15, k * 30 + 15), fill: COLORS[k] }));
+    segs.appendChild(el('path', { d: sector(RI, RM, k * 30 - 15, k * 30 + 15), fill: COLORS[(k + 3) % 12] }));
+    majText.push(labels.appendChild(el('text', {})));
+    minText.push(labels.appendChild(el('text', {})));
+  }
+
+  // quality overlay, drawn for the shape at the top position and rotated with it
+  var fills = document.getElementById('fills');
+  [-1, 0, 1].forEach(function (o) {
+    fills.appendChild(el('path', { 'class': 'q-major', d: sector(RM, RO, o * 30 - 15, o * 30 + 15) }));
+    fills.appendChild(el('path', { 'class': 'q-minor', d: sector(RI, RM, o * 30 - 15, o * 30 + 15) }));
+  });
+  fills.appendChild(el('path', { 'class': 'q-dim', d: sector(RI, RM, 45, 75) }));
+
+  // ---- the shape: three major wedges, four inner wedges ----
+  var shape = document.getElementById('shape');
+  var inset = 5;
+  shape.setAttribute('d',
+    'M' + pt(RO - inset, -45) + 'A' + (RO - inset) + ' ' + (RO - inset) + ' 0 0 1 ' + pt(RO - inset, 45) +
+    'L' + pt(RM, 45) + 'A' + RM + ' ' + RM + ' 0 0 1 ' + pt(RM, 75) +
+    'L' + pt(RI, 75) + 'A' + RI + ' ' + RI + ' 0 0 0 ' + pt(RI, -45) + 'Z');
+
+  var rotor = document.getElementById('rotor');
+  var rotating = [rotor, fills];
+  var rootMark = document.getElementById('rootMark');
+  var modesBox = document.getElementById('modes');
+  var modeBtns = MODES.map(function (m, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mode-btn';
+    b.id = 'mode-' + m.name.toLowerCase();
+    b.innerHTML = '<span class="dot"></span><span class="nm"></span><span class="alias">' + m.alias + '</span>';
+    b.addEventListener('click', function () { mode = i; render(); });
+    modesBox.appendChild(b);
+    return b;
+  });
+
+  function pos() { return mod(Math.round(rot / 30), 12); }
+  function parentFifths(alternate) {
+    var p = pos();
+    var base = p <= 6 ? p : p - 12;
+    if (alternate && p >= 5 && p <= 7) base = p <= 6 ? p - 12 : p;
+    return base;
+  }
+
+  function chips(box, items) {
+    box.innerHTML = '';
+    items.forEach(function (it) {
+      var d = document.createElement('div');
+      d.className = 'chip' + (it.root ? ' root' : '');
+      d.style.background = it.color;
+      d.innerHTML = '<small></small><b></b>';
+      d.firstChild.textContent = it.top;
+      d.lastChild.textContent = it.main;
+      box.appendChild(d);
+    });
+  }
+
+  // one wedge label: main line(s), optional small line underneath
+  function drawLabel(t, ring, k, base, mains, sub, isCode) {
+    var p = polar(ring === 'maj' ? R_MAJ : R_MIN, k * 30 + base);
+    var x = p[0].toFixed(1), y = p[1];
+    while (t.firstChild) t.removeChild(t.firstChild);
+    var two = mains.length > 1;
+    t.setAttribute('class', 'note ' + ring + (two ? ' two' : '') + (sub ? ' has-sub' : '') + (isCode ? ' code' : ''));
+    function span(txt, dy, cls) {
+      var ts = el('tspan', { x: x, y: (y + dy).toFixed(1) });
+      if (cls) ts.setAttribute('class', cls);
+      ts.textContent = txt;
+      t.appendChild(ts);
+    }
+    if (two) {
+      var gap = ring === 'maj' ? 15 : 9.5;
+      span(mains[0], -gap); span(mains[1], gap);
+    } else if (sub) {
+      span(mains[0], ring === 'maj' ? -9 : -7);
+      span(sub, ring === 'maj' ? 16 : 11, 'sub');
+    } else {
+      span(mains[0], 0);
+    }
+  }
+
+  function render() {
+    var M = MODES[mode];
+    var p = parentFifths(alt);
+    var pp = pos();
+    var rootF = p + M.m;
+    var base = camelot ? CAMELOT_BASE : 0;
+
+    svg.classList.toggle('show-chords', showChords);
+    segs.setAttribute('transform', 'rotate(' + base + ' 300 300)');
+    rotating.forEach(function (g) { g.style.transform = 'rotate(' + (rot + base) + 'deg)'; });
+    var rp = polar(M.ring === 'maj' ? R_MAJ : R_MIN, M.off * 30);
+    var rr = M.ring === 'maj' ? 31 : 24;
+    rootMark.style.transform = 'translate(' + rp[0].toFixed(1) + 'px,' + rp[1].toFixed(1) + 'px)';
+    rootMark.setAttribute('r', rr);
+    rootMark.style.r = rr + 'px';
+
+    // scale and chords for the current mode
+    var scale = [], chords = [], numeralOf = {};
+    for (var j = 0; j < 7; j++) {
+      var idx = (M.deg + j) % 7;
+      var f = p + ION[idx];
+      var diff = mod(semis(f) - semis(rootF), 12) - MAJ_ST[j];
+      var acc = diff === -1 ? '♭' : diff === 1 ? '♯' : '';
+      var q = QUAL[idx];
+      var num = acc + (q === '' ? ROMAN[j] : ROMAN[j].toLowerCase()) + (q === '°' ? '°' : '');
+      numeralOf[f] = num;
+      scale.push({ top: acc + (j + 1), main: noteName(f), color: colorOf(f), root: j === 0 });
+      chords.push({ top: num, main: noteName(f) + q, color: showChords ? QCOLOR[q] : colorOf(f), root: j === 0 });
+    }
+    chips(document.getElementById('scale'), scale);
+    chips(document.getElementById('chords'), chords);
+
+    // wheel labels
+    for (var k = 0; k < 12; k++) {
+      var d = mod(k - pp, 12);
+      var off = d > 6 ? d - 12 : d;
+      var code = camelotNum(k);
+      // outer ring: major
+      if (off >= -1 && off <= 1) {
+        var fm = p + off, nm = noteName(fm);
+        if (camelot) drawLabel(majText[k], 'maj', k, base, [code + 'B'], showRoman ? numeralOf[fm] : nm, true);
+        else drawLabel(majText[k], 'maj', k, base, [nm], showRoman ? numeralOf[fm] : null, false);
+      } else if (camelot) {
+        drawLabel(majText[k], 'maj', k, base, [code + 'B'], MAJ_LABELS[k][0], true);
+      } else {
+        drawLabel(majText[k], 'maj', k, base, MAJ_LABELS[k], null, false);
+      }
+      // inner ring: minor, plus the diminished chord at the end of the shape
+      if (off >= -1 && off <= 2) {
+        var fn = p + off + 3, cn = noteName(fn) + (off === 2 ? '°' : 'm');
+        if (camelot) drawLabel(minText[k], 'min', k, base, [code + 'A'], showRoman ? numeralOf[fn] : cn, true);
+        else drawLabel(minText[k], 'min', k, base, [cn], showRoman ? numeralOf[fn] : null, false);
+      } else if (camelot) {
+        drawLabel(minText[k], 'min', k, base, [code + 'A'], MIN_LABELS[k][0] + 'm', true);
+      } else {
+        drawLabel(minText[k], 'min', k, base, MIN_LABELS[k].map(function (s) { return s + 'm'; }), null, false);
+      }
+    }
+
+    // readout
+    var title = noteName(rootF) + ' ' + modeLabel(mode);
+    document.getElementById('hubRoot').textContent = noteName(rootF);
+    document.getElementById('hubMode').textContent = modeLabel(mode);
+    document.getElementById('now').textContent = title;
+    var cam = camelot ? ' Camelot ' + camelotNum(pp) + 'B / ' + camelotNum(pp) + 'A.' : '';
+    document.getElementById('parent').textContent = (mode === 0
+      ? 'The major scale itself.'
+      : 'Same notes as ' + noteName(p) + ' major, starting on ' + noteName(rootF) + '.') + cam;
+    document.getElementById('rings').innerHTML = camelot
+      ? '<b>Outer ring:</b> major (B) &nbsp;·&nbsp; <b>Inner ring:</b> minor (A)'
+      : '<b>Outer ring:</b> major &nbsp;·&nbsp; <b>Inner ring:</b> minor (m)';
+    shape.setAttribute('aria-valuenow', pp);
+    shape.setAttribute('aria-valuetext', title);
+
+    var enh = document.getElementById('enh');
+    if (pp >= 5 && pp <= 7) {
+      enh.hidden = false;
+      enh.textContent = 'Spell as ' + noteName(parentFifths(!alt)) + ' major instead';
+    } else { enh.hidden = true; }
+
+    modeBtns.forEach(function (b, i) {
+      b.setAttribute('aria-pressed', i === mode ? 'true' : 'false');
+      b.querySelector('.nm').textContent = noteName(p + MODES[i].m) + ' ' + modeLabel(i);
+      b.hidden = !allModes && i !== 0 && i !== 5;
+      b.querySelector('.alias').hidden = !allModes;
+    });
+    document.getElementById('tModes').setAttribute('aria-pressed', String(allModes));
+    document.getElementById('tChords').setAttribute('aria-pressed', String(showChords));
+    document.getElementById('tRoman').setAttribute('aria-pressed', String(showRoman));
+    document.getElementById('tCamelot').setAttribute('aria-pressed', String(camelot));
+    document.getElementById('qkey').hidden = !showChords;
+  }
+
+  // ---- dragging ----
+  var dragging = false, lastAngle = 0;
+  function setSnap(on) { rotating.forEach(function (g) { g.classList.toggle('snap', on); }); }
+  function pointerAngle(e) {
+    var r = svg.getBoundingClientRect();
+    return Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180 / Math.PI;
+  }
+  shape.addEventListener('pointerdown', function (e) {
+    dragging = true;
+    lastAngle = pointerAngle(e);
+    setSnap(false);
+    shape.classList.add('dragging');
+    try { shape.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  });
+  shape.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    var a = pointerAngle(e);
+    var d = a - lastAngle;
+    if (d > 180) d -= 360; else if (d < -180) d += 360;
+    lastAngle = a;
+    rot += d;
+    render();
+  });
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    shape.classList.remove('dragging');
+    setSnap(true);
+    rot = Math.round(rot / 30) * 30;
+    render();
+  }
+  shape.addEventListener('pointerup', endDrag);
+  shape.addEventListener('pointercancel', endDrag);
+
+  function step(n) { setSnap(true); rot = Math.round(rot / 30) * 30 + n * 30; render(); }
+  document.getElementById('cw').addEventListener('click', function () { step(1); });
+  document.getElementById('ccw').addEventListener('click', function () { step(-1); });
+  shape.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { step(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { step(-1); e.preventDefault(); }
+  });
+  document.getElementById('enh').addEventListener('click', function () { alt = !alt; render(); });
+  document.getElementById('tModes').addEventListener('click', function () {
+    allModes = !allModes;
+    if (!allModes && mode !== 0 && mode !== 5) mode = 0;
+    render();
+  });
+  document.getElementById('tChords').addEventListener('click', function () { showChords = !showChords; render(); });
+  document.getElementById('tRoman').addEventListener('click', function () { showRoman = !showRoman; render(); });
+  document.getElementById('tCamelot').addEventListener('click', function () {
+    camelot = !camelot;
+    setSnap(false);            // jump to the clock layout without a spin
+    render();
+    requestAnimationFrame(function () { setSnap(true); });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
