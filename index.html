@@ -198,6 +198,9 @@ h2 {
 .toggle[aria-pressed="true"] .track { background: var(--ink); }
 .toggle[aria-pressed="true"] .track::after { transform: translateX(14px); }
 .toggle[aria-pressed="true"] { font-weight: 600; }
+.toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.toggle:disabled:hover { border-color: transparent; }
+.key[hidden] { display: none; }
 .key { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; padding: 6px 10px 0; }
 .key span { display: inline-flex; align-items: center; gap: 6px; }
 .key i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
@@ -239,7 +242,7 @@ h2 {
       <button type="button" id="ccw">&#8634; Down a fifth</button>
       <button type="button" id="cw">Up a fifth &#8635;</button>
     </div>
-    <p class="hint">Drag the black shape around the wheel, or use the arrow keys.</p>
+    <p class="hint" id="hint">Drag the black shape around the wheel, or use the arrow keys.</p>
   </div>
 
   <div class="panel">
@@ -258,6 +261,8 @@ h2 {
     <section>
       <h2>Show on the wheel</h2>
       <div class="toggles">
+        <button type="button" class="toggle" id="tShape" aria-pressed="true"><span class="track"></span><span>Shape</span></button>
+        <button type="button" class="toggle" id="tSuffix" aria-pressed="true"><span class="track"></span><span>Chord suffixes (m, °)</span></button>
         <button type="button" class="toggle" id="tChords" aria-pressed="false"><span class="track"></span><span>Chord types</span></button>
         <button type="button" class="toggle" id="tRoman" aria-pressed="false"><span class="track"></span><span>Roman numerals</span></button>
         <button type="button" class="toggle" id="tCamelot" aria-pressed="false"><span class="track"></span><span>Camelot wheel</span></button>
@@ -307,6 +312,8 @@ h2 {
   var mode = 0;       // index in MODES
   var alt = false;    // alternate enharmonic spelling for B/C♭, F♯/G♭, D♭/C♯
   var showChords = false, showRoman = false, camelot = false, allModes = false;
+  var showShape = true, showSuffix = true;
+  function sfx(q) { return showSuffix ? q : ''; }
   function modeLabel(i) { return allModes ? MODES[i].name : (i === 0 ? 'major' : 'minor'); }
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -428,7 +435,9 @@ h2 {
     var rootF = p + M.m;
     var base = camelot ? CAMELOT_BASE : 0;
 
-    svg.classList.toggle('show-chords', showChords);
+    svg.classList.toggle('show-chords', showChords && showShape);
+    rotor.style.display = showShape ? '' : 'none';
+    fills.style.visibility = showShape ? '' : 'hidden';
     segs.setAttribute('transform', 'rotate(' + base + ' 300 300)');
     rotating.forEach(function (g) { g.style.transform = 'rotate(' + (rot + base) + 'deg)'; });
     var rp = polar(M.ring === 'maj' ? R_MAJ : R_MIN, M.off * 30);
@@ -448,7 +457,7 @@ h2 {
       var num = acc + (q === '' ? ROMAN[j] : ROMAN[j].toLowerCase()) + (q === '°' ? '°' : '');
       numeralOf[f] = num;
       scale.push({ top: acc + (j + 1), main: noteName(f), color: colorOf(f), root: j === 0 });
-      chords.push({ top: num, main: noteName(f) + q, color: showChords ? QCOLOR[q] : colorOf(f), root: j === 0 });
+      chords.push({ top: num, main: noteName(f) + sfx(q), color: showChords && showShape ? QCOLOR[q] : colorOf(f), root: j === 0 });
     }
     chips(document.getElementById('scale'), scale);
     chips(document.getElementById('chords'), chords);
@@ -459,7 +468,7 @@ h2 {
       var off = d > 6 ? d - 12 : d;
       var code = camelotNum(k);
       // outer ring: major
-      if (off >= -1 && off <= 1) {
+      if (showShape && off >= -1 && off <= 1) {
         var fm = p + off, nm = noteName(fm);
         if (camelot) drawLabel(majText[k], 'maj', k, base, [code + 'B'], showRoman ? numeralOf[fm] : nm, true);
         else drawLabel(majText[k], 'maj', k, base, [nm], showRoman ? numeralOf[fm] : null, false);
@@ -469,14 +478,14 @@ h2 {
         drawLabel(majText[k], 'maj', k, base, MAJ_LABELS[k], null, false);
       }
       // inner ring: minor, plus the diminished chord at the end of the shape
-      if (off >= -1 && off <= 2) {
-        var fn = p + off + 3, cn = noteName(fn) + (off === 2 ? '°' : 'm');
+      if (showShape && off >= -1 && off <= 2) {
+        var fn = p + off + 3, cn = noteName(fn) + sfx(off === 2 ? '°' : 'm');
         if (camelot) drawLabel(minText[k], 'min', k, base, [code + 'A'], showRoman ? numeralOf[fn] : cn, true);
         else drawLabel(minText[k], 'min', k, base, [cn], showRoman ? numeralOf[fn] : null, false);
       } else if (camelot) {
-        drawLabel(minText[k], 'min', k, base, [code + 'A'], MIN_LABELS[k][0] + 'm', true);
+        drawLabel(minText[k], 'min', k, base, [code + 'A'], MIN_LABELS[k][0] + sfx('m'), true);
       } else {
-        drawLabel(minText[k], 'min', k, base, MIN_LABELS[k].map(function (s) { return s + 'm'; }), null, false);
+        drawLabel(minText[k], 'min', k, base, MIN_LABELS[k].map(function (s) { return s + sfx('m'); }), null, false);
       }
     }
 
@@ -491,7 +500,7 @@ h2 {
       : 'Same notes as ' + noteName(p) + ' major, starting on ' + noteName(rootF) + '.') + cam;
     document.getElementById('rings').innerHTML = camelot
       ? '<b>Outer ring:</b> major (B) &nbsp;·&nbsp; <b>Inner ring:</b> minor (A)'
-      : '<b>Outer ring:</b> major &nbsp;·&nbsp; <b>Inner ring:</b> minor (m)';
+      : '<b>Outer ring:</b> major &nbsp;·&nbsp; <b>Inner ring:</b> minor' + (showSuffix ? ' (m)' : '');
     shape.setAttribute('aria-valuenow', pp);
     shape.setAttribute('aria-valuetext', title);
 
@@ -511,7 +520,12 @@ h2 {
     document.getElementById('tChords').setAttribute('aria-pressed', String(showChords));
     document.getElementById('tRoman').setAttribute('aria-pressed', String(showRoman));
     document.getElementById('tCamelot').setAttribute('aria-pressed', String(camelot));
-    document.getElementById('qkey').hidden = !showChords;
+    document.getElementById('qkey').hidden = !(showChords && showShape);
+    document.getElementById('tShape').setAttribute('aria-pressed', String(showShape));
+    document.getElementById('tSuffix').setAttribute('aria-pressed', String(showSuffix));
+    document.getElementById('tChords').disabled = !showShape;
+    document.getElementById('tRoman').disabled = !showShape;
+    document.getElementById('hint').hidden = !showShape;
   }
 
   // ---- dragging ----
@@ -562,6 +576,8 @@ h2 {
     if (!allModes && mode !== 0 && mode !== 5) mode = 0;
     render();
   });
+  document.getElementById('tShape').addEventListener('click', function () { showShape = !showShape; render(); });
+  document.getElementById('tSuffix').addEventListener('click', function () { showSuffix = !showSuffix; render(); });
   document.getElementById('tChords').addEventListener('click', function () { showChords = !showChords; render(); });
   document.getElementById('tRoman').addEventListener('click', function () { showRoman = !showRoman; render(); });
   document.getElementById('tCamelot').addEventListener('click', function () {
